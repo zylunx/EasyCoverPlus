@@ -508,11 +508,24 @@ export default function Controls() {
       } else {
         // Render an off-screen clone so the live preview never flickers while
         // the individual compositing layers are hidden and shown.
+        const exportHost = document.createElement('div');
+        Object.assign(exportHost.style, {
+          position: 'fixed',
+          left: `${-(width + 100)}px`,
+          top: '0',
+          width: `${width}px`,
+          height: `${height}px`,
+          pointerEvents: 'none',
+        });
+
         const exportRoot = node.cloneNode(true) as HTMLElement;
         exportRoot.removeAttribute('id');
         Object.assign(exportRoot.style, {
-          position: 'fixed',
-          left: `${-(width + 100)}px`,
+          // Keep the node being serialized at the host's origin. Putting the
+          // root itself at a negative coordinate makes html-to-image preserve
+          // that offset inside the SVG and paints every layer off-canvas.
+          position: 'relative',
+          left: '0',
           top: '0',
           width: `${width}px`,
           height: `${height}px`,
@@ -520,7 +533,8 @@ export default function Controls() {
           transition: 'none',
           pointerEvents: 'none',
         });
-        document.body.appendChild(exportRoot);
+        exportHost.appendChild(exportRoot);
+        document.body.appendChild(exportHost);
 
         try {
           const iconElement = exportRoot.querySelector<HTMLElement>('[data-cover-icon-source]');
@@ -576,7 +590,7 @@ export default function Controls() {
             },
           );
         } finally {
-          exportRoot.remove();
+          exportHost.remove();
         }
       }
       const blob = await canvasToExportBlob(canvas, format);
