@@ -17,6 +17,7 @@ import { Separator } from '@/components/ui/separator';
 import { Download, RotateCcw, Maximize, Github, ExternalLink, Upload, HardDrive, Search, AlignLeft, AlignCenter, AlignRight, Lock, Unlock, ArrowLeftRight, MoveRight, Loader2 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { toCanvas } from 'html-to-image';
+import { compositeContainerBlur } from '@/lib/export-container-blur';
 
 type ExportFormat = 'png' | 'webp' | 'avif';
 type ExportSupport = 'checking' | 'native' | 'wasm' | 'unsupported';
@@ -166,6 +167,34 @@ const sanitizeExportFilename = (leftText: string, rightText: string) => {
     .replace(/[. ]+$/g, '')
     .trim();
   return Array.from(combined || 'east-cover-plus').slice(0, 80).join('');
+};
+
+type ExportLayerVisibility = {
+  backdrop: boolean;
+  text: boolean;
+  icon: boolean;
+};
+
+const setExportLayerVisibility = (
+  root: HTMLElement,
+  visibility: ExportLayerVisibility,
+) => {
+  root.querySelectorAll<HTMLElement>(
+    '[data-cover-background-layer], [data-cover-inner-shadow-layer]',
+  ).forEach((element) => {
+    element.style.visibility = visibility.backdrop ? 'visible' : 'hidden';
+  });
+  root.querySelectorAll<HTMLElement>('[data-cover-text-layer]').forEach((element) => {
+    element.style.visibility = visibility.text ? 'visible' : 'hidden';
+  });
+  root.querySelectorAll<HTMLElement>('[data-cover-icon-source]').forEach((element) => {
+    element.style.visibility = visibility.icon ? 'visible' : 'hidden';
+    // backdrop-filter is intentionally replaced by deterministic canvas
+    // compositing during export; leaving it in any pass triggers a large,
+    // incorrectly clipped foreignObject filter in some browsers.
+    element.style.backdropFilter = 'none';
+    element.style.setProperty('-webkit-backdrop-filter', 'none');
+  });
 };
 
 // Helper component for Reset Button
@@ -418,20 +447,105 @@ export default function Controls() {
 
       const images = Array.from(node.querySelectorAll('img'));
       await Promise.all(images.map(async (img) => {
-        if (!img.complete || img.naturalHeight === 0) {
+        if (!img.complete) {
           await new Promise<void>((resolve, reject) => {
             img.addEventListener('load', () => resolve(), { once: true });
             img.addEventListener('error', () => reject(new Error(`Failed to load image: ${img.alt || img.src}`)), { once: true });
           });
+        }
+        // A failed image is already `complete`, so waiting for another load or
+        // error event would leave export stuck forever.
+        if (img.naturalHeight === 0) {
+          throw new Error(`Failed to load image: ${img.alt || img.src}`);
         }
         if (typeof img.decode === 'function') {
           await img.decode();
         }
       }));
 
-      // A single render keeps fonts, filters and decoded images from being
-      // sampled at different moments and avoids caching a failed warm-up pass.
-      const canvas = await toCanvas(node as HTMLElement, options);
+      let canvas: HTMLCanvasElement;
+      const containerShape = store.icon.bgShape;
+      const needsContainerBlur = store.icon.visible
+        && containerShape !== 'none'
+        && store.icon.bgBlur > 0;
+
+      if (!needsContainerBlur) {
+        // Keep the common path to one render when there is no backdrop blur.
+        canvas = await toCanvas(node as HTMLElement, options);
+      } else {
+        // Render an off-screen clone so the live preview never flickers while
+        // the individual compositing layers are hidden and shown.
+        const exportRoot = node.cloneNode(true) as HTMLElement;
+        exportRoot.removeAttribute('id');
+        Object.assign(exportRoot.style, {
+          position: 'fixed',
+          left: `${-(width + 100)}px`,
+          top: '0',
+          width: `${width}px`,
+          height: `${height}px`,
+          transform: 'none',
+          transition: 'none',
+          pointerEvents: 'none',
+        });
+        document.body.appendChild(exportRoot);
+
+        try {
+          const iconElement = exportRoot.querySelector<HTMLElement>('[data-cover-icon-source]');
+          if (!iconElement) throw new Error('Export icon layer is unavailable');
+
+          const rootRect = exportRoot.getBoundingClientRect();
+          const iconRect = iconElement.getBoundingClientRect();
+          const scaleX = rootRect.width / width;
+          const scaleY = rootRect.height / height;
+          const centerX = (iconRect.left + iconRect.right) / 2;
+          const centerY = (iconRect.top + iconRect.bottom) / 2;
+
+          // Elements below a "behind" icon must not be sampled from text that
+          // is painted above it. Front/inline icons sample the composed text.
+          const textIsForeground = store.icon.placement === 'behind';
+          setExportLayerVisibility(exportRoot, {
+            backdrop: true,
+            text: !textIsForeground,
+            icon: false,
+          });
+          const backdropCanvas = await toCanvas(exportRoot, options);
+
+          setExportLayerVisibility(exportRoot, {
+            backdrop: false,
+            text: false,
+            icon: true,
+          });
+          const iconCanvas = await toCanvas(exportRoot, options);
+
+          let foregroundCanvas: HTMLCanvasElement | null = null;
+          if (textIsForeground) {
+            setExportLayerVisibility(exportRoot, {
+              backdrop: false,
+              text: true,
+              icon: false,
+            });
+            foregroundCanvas = await toCanvas(exportRoot, options);
+          }
+
+          canvas = compositeContainerBlur(
+            backdropCanvas,
+            iconCanvas,
+            foregroundCanvas,
+            {
+              centerX: (centerX - rootRect.left) / scaleX,
+              centerY: (centerY - rootRect.top) / scaleY,
+              width: iconElement.offsetWidth,
+              height: iconElement.offsetHeight,
+              rotation: store.icon.rotation,
+              shape: containerShape,
+              radiusPercent: store.icon.radius,
+              blur: store.icon.bgBlur,
+            },
+          );
+        } finally {
+          exportRoot.remove();
+        }
+      }
       const blob = await canvasToExportBlob(canvas, format);
       const objectUrl = URL.createObjectURL(blob);
       const filename = sanitizeExportFilename(
@@ -442,8 +556,15 @@ export default function Controls() {
       const link = document.createElement('a');
       link.download = `${filename}.${format}`;
       link.href = objectUrl;
-      link.click();
-      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+      document.body.appendChild(link);
+      try {
+        link.click();
+      } finally {
+        link.remove();
+        // Firefox may not have consumed the URL when click() returns. Revoking
+        // it in the same task can intermittently produce an empty download.
+        window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      }
     } catch (err) {
       console.error('Export failed', err);
       alert(`导出 ${format.toUpperCase()} 失败，请重试`);

@@ -65,6 +65,7 @@ function FittedText({
   return (
     <div
       ref={containerRef}
+      data-cover-text-layer
       className="w-full min-w-0"
       style={{
         transform: `translate(${offsetX}px, ${offsetY}px) rotate(${rotation}deg)`,
@@ -213,8 +214,8 @@ export default function Canvas() {
                 ? `0 0 ${Math.round(icon.size * 0.28)}px ${hexToRgba(background.autoPrimary, 0.25)}, inset 0 0 ${Math.round(icon.size * 0.22)}px rgba(255,255,255,0.15)`
                 : 'none',
               backgroundColor: bgColor,
-              backdropFilter: icon.bgBlur > 0 ? `blur(${icon.bgBlur}px)` : 'none',
-              WebkitBackdropFilter: icon.bgBlur > 0 ? `blur(${icon.bgBlur}px)` : 'none',
+              backdropFilter: icon.bgShape !== 'none' && icon.bgBlur > 0 ? `blur(${icon.bgBlur}px)` : 'none',
+              WebkitBackdropFilter: icon.bgShape !== 'none' && icon.bgBlur > 0 ? `blur(${icon.bgBlur}px)` : 'none',
               padding: icon.bgShape !== 'none' ? `${(icon.size * icon.padding) / 100}px` : 0,
               borderRadius: icon.bgShape === 'circle' ? '50%' : icon.bgShape === 'rounded-square' ? `${icon.radius / 2}%` : icon.bgShape === 'square' ? '0' : '0',
           }}
@@ -369,6 +370,7 @@ export default function Canvas() {
         >
             {/* Background Layer */}
             <div
+              data-cover-background-layer
               className="absolute inset-0"
               style={{
                 backgroundColor: background.type === 'solid' ? background.color : '#ffffff',
@@ -397,6 +399,7 @@ export default function Canvas() {
             {/* Inner Shadow Layer */}
             {background.shadow && (
                 <div 
+                    data-cover-inner-shadow-layer
                     className="absolute inset-0 pointer-events-none z-0"
                     style={{
                         boxShadow: `inset 0 ${background.shadowOffsetY}px ${background.shadowBlur}px ${background.shadowColor}`,
