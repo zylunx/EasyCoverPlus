@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { useCoverStore, RATIOS, AspectRatio } from '@/store/useCoverStore';
+import { useCoverStore, RATIOS } from '@/store/useCoverStore';
 import { Input } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
 import { Label } from '@/components/ui/label';
@@ -14,11 +14,14 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { IconPicker } from '@/components/cover/IconPicker';
 import { Separator } from '@/components/ui/separator';
-import { Download, RotateCcw, Maximize, Github, ExternalLink, Settings2, Link as LinkIcon, Link2, Upload, HardDrive, Search, AlignLeft, AlignCenter, AlignRight, Lock, Unlock, ArrowLeftRight, MoveRight, Loader2 } from 'lucide-react';
+import { Download, RotateCcw, Maximize, Github, ExternalLink, Upload, HardDrive, Search, AlignLeft, AlignCenter, AlignRight, Lock, Unlock, ArrowLeftRight, MoveRight, Loader2 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { toCanvas } from 'html-to-image';
 
 type ExportFormat = 'png' | 'webp' | 'avif';
+type ExportSupport = 'checking' | 'native' | 'wasm' | 'unsupported';
+
+const EXPORT_FORMATS: ExportFormat[] = ['png', 'webp', 'avif'];
 
 const EXPORT_MIME_TYPES: Record<ExportFormat, string> = {
   png: 'image/png',
@@ -28,19 +31,132 @@ const EXPORT_MIME_TYPES: Record<ExportFormat, string> = {
 
 const EXPORT_QUALITY = 0.95;
 
+let avifEncoderModulePromise: Promise<import('@jsquash/avif/codec/enc/avif_enc.js').AVIFModule> | null = null;
+
+const loadAvifEncoder = async () => {
+  if (!avifEncoderModulePromise) {
+    avifEncoderModulePromise = Promise.all([
+      import('@jsquash/avif/codec/enc/avif_enc.js'),
+      import('@jsquash/avif/utils.js'),
+    ]).then(([codec, utils]) => utils.initEmscriptenModule(codec.default));
+  }
+  return avifEncoderModulePromise;
+};
+
+const readFileAsDataUrl = (file: File): Promise<string> => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onerror = () => reject(reader.error ?? new Error(`Failed to read ${file.name}`));
+  reader.onload = () => resolve(reader.result as string);
+  reader.readAsDataURL(file);
+});
+
+const preloadImage = (src: string): Promise<void> => new Promise((resolve, reject) => {
+  const image = new Image();
+  image.onload = () => resolve();
+  image.onerror = () => reject(new Error('The selected image could not be decoded'));
+  image.src = src;
+});
+
 const canvasToBlob = (
   canvas: HTMLCanvasElement,
   format: ExportFormat,
 ): Promise<Blob> => new Promise((resolve, reject) => {
   const mimeType = EXPORT_MIME_TYPES[format];
   canvas.toBlob((blob) => {
-    if (!blob || blob.type !== mimeType) {
-      reject(new Error(`${format.toUpperCase()} encoding is not supported`));
+    if (!blob) {
+      reject(new Error(`${format.toUpperCase()} encoder returned no data`));
+      return;
+    }
+
+    // Unsupported encoders commonly fall back to PNG instead of throwing.
+    // Never download that fallback with a misleading .webp/.avif extension.
+    const actualMimeType = blob.type.split(';', 1)[0].toLowerCase();
+    if (actualMimeType !== mimeType) {
+      reject(new Error(
+        `${format.toUpperCase()} encoding is not supported (returned ${actualMimeType || 'an unknown format'})`,
+      ));
       return;
     }
     resolve(blob);
   }, mimeType, EXPORT_QUALITY);
 });
+
+const detectCanvasEncoder = async (format: ExportFormat): Promise<boolean> => {
+  const canvas = document.createElement('canvas');
+  canvas.width = 2;
+  canvas.height = 2;
+  const context = canvas.getContext('2d');
+  if (!context) return false;
+
+  // Use non-transparent pixels so the browser has to run a real encoder.
+  context.fillStyle = '#ff00aa';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  try {
+    await canvasToBlob(canvas, format);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const canvasToAvifBlob = async (canvas: HTMLCanvasElement): Promise<Blob> => {
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  if (!context) {
+    throw new Error('Unable to read the rendered canvas for AVIF encoding');
+  }
+
+  const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+  // Load only the single-threaded codec. It works without COOP/COEP headers,
+  // which makes it reliable on static hosting and avoids bundling worker code.
+  const encoder = await loadAvifEncoder();
+  const pixels = new Uint8Array(
+    imageData.data.buffer as ArrayBuffer,
+    imageData.data.byteOffset,
+    imageData.data.byteLength,
+  );
+  const encoded = encoder.encode(pixels, imageData.width, imageData.height, {
+    quality: Math.round(EXPORT_QUALITY * 100),
+    qualityAlpha: 100,
+    denoiseLevel: 0,
+    tileColsLog2: 0,
+    tileRowsLog2: 0,
+    speed: 6,
+    subsample: 3, // YUV 4:4:4 keeps text and sharp coloured edges cleaner.
+    chromaDeltaQ: false,
+    sharpness: 0,
+    enableSharpYUV: true,
+    tune: 0,
+    bitDepth: 8,
+  });
+
+  if (!encoded || encoded.byteLength === 0) {
+    throw new Error('The AVIF WASM encoder returned no data');
+  }
+  const encodedBuffer = new Uint8Array(encoded).buffer;
+  return new Blob([encodedBuffer], { type: EXPORT_MIME_TYPES.avif });
+};
+
+const canvasToExportBlob = async (
+  canvas: HTMLCanvasElement,
+  format: ExportFormat,
+): Promise<Blob> => {
+  if (format !== 'avif') {
+    return canvasToBlob(canvas, format);
+  }
+
+  // Prefer the browser encoder when present. Most Chromium-based browsers can
+  // decode AVIF but cannot encode it, so use jSquash as the reliable fallback.
+  try {
+    return await canvasToBlob(canvas, 'avif');
+  } catch (nativeError) {
+    try {
+      return await canvasToAvifBlob(canvas);
+    } catch (wasmError) {
+      console.error('Native and WASM AVIF encoding both failed', { nativeError, wasmError });
+      throw new Error('AVIF 编码器加载或执行失败', { cause: wasmError });
+    }
+  }
+};
 
 const sanitizeExportFilename = (leftText: string, rightText: string) => {
   const normalize = (value: string) => value.replace(/[\r\n]+/g, ' ').trim();
@@ -123,33 +239,28 @@ const SliderWithInput = ({
 
 export default function Controls() {
   const store = useCoverStore();
-  const [supportedExportFormats, setSupportedExportFormats] = React.useState<Record<ExportFormat, boolean>>({
-    png: true,
-    webp: false,
-    avif: false,
+  const [exportSupport, setExportSupport] = React.useState<Record<ExportFormat, ExportSupport>>({
+    png: 'checking',
+    webp: 'checking',
+    avif: 'checking',
   });
   const [exportingFormat, setExportingFormat] = React.useState<ExportFormat | null>(null);
 
   React.useEffect(() => {
     let cancelled = false;
     const detectFormats = async () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = 1;
-      canvas.height = 1;
-      const context = canvas.getContext('2d');
-      context?.fillRect(0, 0, 1, 1);
-
-      const supports = async (format: ExportFormat) => {
-        try {
-          await canvasToBlob(canvas, format);
-          return true;
-        } catch {
-          return false;
-        }
-      };
-      const [webp, avif] = await Promise.all([supports('webp'), supports('avif')]);
+      const results = await Promise.all(EXPORT_FORMATS.map(detectCanvasEncoder));
       if (!cancelled) {
-        setSupportedExportFormats({ png: true, webp, avif });
+        setExportSupport(Object.fromEntries(
+          EXPORT_FORMATS.map((format, index) => [
+            format,
+            results[index]
+              ? 'native'
+              : format === 'avif' && typeof WebAssembly !== 'undefined'
+                ? 'wasm'
+                : 'unsupported',
+          ]),
+        ) as Record<ExportFormat, ExportSupport>);
       }
     };
 
@@ -169,19 +280,38 @@ export default function Controls() {
   const pct = (p: number) => Math.max(1, Math.round(canvasMax * p));
 
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const url = URL.createObjectURL(file);
-      store.updateBackground({ type: 'image', imageUrl: url });
+      try {
+        // html-to-image fetches every image while cloning the canvas. A blob URL
+        // becomes invalid when its cache-busting query string is added, whereas
+        // a data URL is self-contained and remains available during export.
+        const url = await readFileAsDataUrl(file);
+        await preloadImage(url);
+        store.updateBackground({ type: 'image', imageUrl: url });
+      } catch (err) {
+        console.error('Failed to load background image', err);
+        alert('图片读取失败，请尝试其他图片文件');
+      } finally {
+        e.target.value = '';
+      }
     }
   };
 
-  const handleIconUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleIconUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const url = URL.createObjectURL(file);
-      store.updateIcon({ customIconUrl: url });
+      try {
+        const url = await readFileAsDataUrl(file);
+        await preloadImage(url);
+        store.updateIcon({ customIconUrl: url });
+      } catch (err) {
+        console.error('Failed to load custom icon', err);
+        alert('图标读取失败，请尝试其他图片文件');
+      } finally {
+        e.target.value = '';
+      }
     }
   };
 
@@ -190,10 +320,17 @@ export default function Controls() {
     if (file) {
         try {
             const fontName = `CustomFont_${Date.now()}`;
-            const url = URL.createObjectURL(file);
+            const url = await readFileAsDataUrl(file);
             const font = new FontFace(fontName, `url(${url})`);
             await font.load();
             document.fonts.add(font);
+            // FontFaceSet entries are not visible inside the standalone SVG
+            // that html-to-image creates. Mirror the uploaded face as a CSS
+            // rule so the exporter can discover and embed the exact font.
+            const fontStyle = document.createElement('style');
+            fontStyle.dataset.exportFont = fontName;
+            fontStyle.textContent = `@font-face { font-family: "${fontName}"; src: url("${url}"); font-style: normal; }`;
+            document.head.appendChild(fontStyle);
             store.updateText({ font: fontName });
         } catch (err) {
             console.error('Failed to load font', err);
@@ -207,10 +344,11 @@ export default function Controls() {
   const [localFontQuery, setLocalFontQuery] = React.useState('');
   const [localFontsLoading, setLocalFontsLoading] = React.useState(false);
 
-  const [isLocalFontApiSupported, setIsLocalFontApiSupported] = React.useState(false);
-  React.useEffect(() => {
-    setIsLocalFontApiSupported('queryLocalFonts' in window);
-  }, []);
+  const isLocalFontApiSupported = React.useSyncExternalStore(
+    () => () => undefined,
+    () => 'queryLocalFonts' in window,
+    () => false,
+  );
 
   const handleLoadLocalFonts = async () => {
     if (!isLocalFontApiSupported) {
@@ -248,39 +386,53 @@ export default function Controls() {
 
   const handleExport = async (format: ExportFormat) => {
     const node = document.getElementById('canvas-export-target');
-    if (!node || !supportedExportFormats[format]) return;
+    if (!node) return;
+    if (exportSupport[format] === 'checking' || exportSupport[format] === 'unsupported') {
+      alert(`当前浏览器无法运行 ${format.toUpperCase()} 编码器，请选择其他格式。`);
+      return;
+    }
 
+    const width = node.clientWidth;
+    const height = node.clientHeight;
     const options = {
       quality: 0.95,
       pixelRatio: 1,
-      cacheBust: true,
-      // Cross-origin font stylesheets block cssRules access in html-to-image.
-      skipFonts: true,
+      width,
+      height,
+      canvasWidth: width,
+      canvasHeight: height,
+      // Local uploads are data URLs and same-origin assets are stable. Avoid
+      // mutating resource URLs, especially blob/data URLs, during export.
+      cacheBust: false,
+      // Fonts must be embedded in the cloned SVG or its metrics and glyphs can
+      // differ from the live preview.
+      skipFonts: false,
       filter: (n: HTMLElement) => !(n.classList && n.classList.contains('export-exclude')),
     };
 
     setExportingFormat(format);
     try {
-      if (document.fonts && (document.fonts as any).ready) {
-        await (document.fonts as any).ready;
+      if (document.fonts) {
+        await document.fonts.ready;
       }
 
       const images = Array.from(node.querySelectorAll('img'));
-      await Promise.all(
-        images.map((img) => {
-          if (img.complete && img.naturalHeight !== 0) return Promise.resolve();
-          return new Promise<void>((resolve) => {
-            const done = () => resolve();
-            img.addEventListener('load', done, { once: true });
-            img.addEventListener('error', done, { once: true });
+      await Promise.all(images.map(async (img) => {
+        if (!img.complete || img.naturalHeight === 0) {
+          await new Promise<void>((resolve, reject) => {
+            img.addEventListener('load', () => resolve(), { once: true });
+            img.addEventListener('error', () => reject(new Error(`Failed to load image: ${img.alt || img.src}`)), { once: true });
           });
-        })
-      );
+        }
+        if (typeof img.decode === 'function') {
+          await img.decode();
+        }
+      }));
 
-      // The first render can miss lazily-loaded Iconify SVGs, fonts, or filters.
-      await toCanvas(node as HTMLElement, options);
+      // A single render keeps fonts, filters and decoded images from being
+      // sampled at different moments and avoids caching a failed warm-up pass.
       const canvas = await toCanvas(node as HTMLElement, options);
-      const blob = await canvasToBlob(canvas, format);
+      const blob = await canvasToExportBlob(canvas, format);
       const objectUrl = URL.createObjectURL(blob);
       const filename = sanitizeExportFilename(
         store.text.leftContent,
@@ -301,14 +453,11 @@ export default function Controls() {
   };
 
   const handleFit = (mode: 'contain' | 'cover') => {
-      // Always reset position and rotation
-      const updates: any = { positionX: 50, positionY: 50, rotation: 0 };
-      
       // We will simply reset scale to 1 and let user manually adjust if they want 'contain'.
       // But for 'cover', we try to calculate a scale that fills the canvas.
       
       if (mode === 'contain') {
-          updates.scale = 1;
+          store.updateBackground({ positionX: 50, positionY: 50, rotation: 0, scale: 1 });
       } else {
           // Calculate scale to cover
           // 1. Get current canvas dimensions
@@ -346,15 +495,18 @@ export default function Controls() {
                    }
                    
                    // Apply with a slight buffer to avoid sub-pixel gaps
-                   store.updateBackground({ ...updates, scale: newScale * 1.01 });
+                   store.updateBackground({
+                       positionX: 50,
+                       positionY: 50,
+                       rotation: 0,
+                       scale: newScale * 1.01,
+                   });
                };
                return; // Async update
           } else {
-              // Fallback
-              updates.scale = 1;
+              store.updateBackground({ positionX: 50, positionY: 50, rotation: 0, scale: 1 });
           }
       }
-      store.updateBackground(updates);
   };
 
   const [activeTab, setActiveTab] = React.useState('picker');
@@ -372,20 +524,30 @@ export default function Controls() {
 
   const handleLeftOffsetChange = (axis: 'x' | 'y', val: number) => {
       const key = axis === 'x' ? 'offsetX' : 'offsetY';
-      const updates: any = { [axis === 'x' ? 'leftOffsetX' : 'leftOffsetY']: val };
-      if (lockedAxes[key]) {
-          updates[axis === 'x' ? 'rightOffsetX' : 'rightOffsetY'] = lockMode[key] ? val : -val;
+      const pairedValue = lockMode[key] ? val : -val;
+      if (axis === 'x') {
+          store.updateText(lockedAxes[key]
+              ? { leftOffsetX: val, rightOffsetX: pairedValue }
+              : { leftOffsetX: val });
+      } else {
+          store.updateText(lockedAxes[key]
+              ? { leftOffsetY: val, rightOffsetY: pairedValue }
+              : { leftOffsetY: val });
       }
-      store.updateText(updates);
   };
 
   const handleRightOffsetChange = (axis: 'x' | 'y', val: number) => {
       const key = axis === 'x' ? 'offsetX' : 'offsetY';
-      const updates: any = { [axis === 'x' ? 'rightOffsetX' : 'rightOffsetY']: val };
-      if (lockedAxes[key]) {
-          updates[axis === 'x' ? 'leftOffsetX' : 'leftOffsetY'] = lockMode[key] ? val : -val;
+      const pairedValue = lockMode[key] ? val : -val;
+      if (axis === 'x') {
+          store.updateText(lockedAxes[key]
+              ? { rightOffsetX: val, leftOffsetX: pairedValue }
+              : { rightOffsetX: val });
+      } else {
+          store.updateText(lockedAxes[key]
+              ? { rightOffsetY: val, leftOffsetY: pairedValue }
+              : { rightOffsetY: val });
       }
-      store.updateText(updates);
   };
 
   const [panelWidth, setPanelWidth] = React.useState(320);
@@ -1088,7 +1250,7 @@ export default function Controls() {
             
             <div className="space-y-2">
                 <Label>图标容器形状</Label>
-                <Select value={store.icon.bgShape} onValueChange={(v) => store.updateIcon({ bgShape: v as any })}>
+                <Select value={store.icon.bgShape} onValueChange={(v) => store.updateIcon({ bgShape: v as typeof store.icon.bgShape })}>
                     <SelectTrigger>
                         <SelectValue placeholder="容器形状" />
                     </SelectTrigger>
@@ -1361,31 +1523,42 @@ export default function Controls() {
 
       <div className="p-4 border-t bg-gray-50 dark:bg-gray-950 space-y-4">
          <div
-            className="grid gap-2"
-            style={{
-              gridTemplateColumns: `repeat(${Object.values(supportedExportFormats).filter(Boolean).length}, minmax(0, 1fr))`,
-            }}
+            className="grid grid-cols-3 gap-2"
          >
-            {(Object.keys(supportedExportFormats) as ExportFormat[])
-              .filter((format) => supportedExportFormats[format])
-              .map((format) => (
+            {EXPORT_FORMATS.map((format) => {
+              const support = exportSupport[format];
+              const isChecking = support === 'checking';
+              const isSupported = support === 'native' || support === 'wasm';
+              const title = isChecking
+                ? `正在检测 ${format.toUpperCase()} 编码器`
+                : isSupported
+                  ? `导出 ${format.toUpperCase()}${support === 'wasm' ? '（WASM 编码）' : ''}`
+                  : `当前浏览器不支持导出 ${format.toUpperCase()}`;
+
+              return (
                 <Button
                   key={format}
-                  variant="default"
+                  variant={isSupported ? 'default' : 'outline'}
                   className="min-w-0 px-2"
-                  disabled={exportingFormat !== null}
+                  disabled={exportingFormat !== null || !isSupported}
                   onClick={() => handleExport(format)}
-                  title={`导出 ${format.toUpperCase()}`}
+                  title={title}
                 >
-                  {exportingFormat === format ? (
+                  {exportingFormat === format || isChecking ? (
                     <Loader2 className="size-4 animate-spin" />
                   ) : (
                     <Download className="size-4" />
                   )}
                   <span>{format.toUpperCase()}</span>
                 </Button>
-              ))}
+              );
+            })}
          </div>
+         {exportSupport.avif === 'wasm' && (
+           <p className="text-center text-[11px] text-muted-foreground">
+             AVIF 将使用 WASM 编码，首次导出需要加载编码器，耗时可能稍长。
+           </p>
+         )}
          
          <div className="text-center text-xs text-muted-foreground">
             <a href="https://github.com/zylunx/EasyCoverPlus" target="_blank" rel="noopener noreferrer" className="hover:underline flex items-center justify-center gap-1">

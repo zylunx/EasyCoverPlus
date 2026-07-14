@@ -8,6 +8,19 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Search, Loader2 } from 'lucide-react';
 
+const FEATURED_ICONS = [
+  'logos:react', 'logos:nextjs-icon', 'logos:typescript-icon', 'logos:tailwindcss-icon',
+  'logos:github-icon', 'logos:twitter', 'logos:google-icon', 'logos:apple',
+  'ph:star-fill', 'ph:heart-fill', 'ph:check-circle-fill', 'ph:warning-fill',
+  'mdi:home', 'mdi:account', 'mdi:cog', 'mdi:bell',
+  'fluent:emoji-smile-slight-24-filled', 'fluent:weather-sunny-24-filled',
+  'simple-icons:shadcnui', 'simple-icons:vercel',
+];
+
+interface IconSearchResponse {
+  icons?: string[];
+}
+
 // Simple debounce implementation inside the component for simplicity if we don't want a separate file
 function useDebounceValue<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value);
@@ -33,49 +46,42 @@ interface IconPickerProps {
 export function IconPicker({ value, onChange }: IconPickerProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const [icons, setIcons] = useState<string[]>([]);
+  const [icons, setIcons] = useState<string[]>(FEATURED_ICONS);
   const [loading, setLoading] = useState(false);
-  
-  // Default featured icons if query is empty
-  const featuredIcons = [
-    'logos:react', 'logos:nextjs-icon', 'logos:typescript-icon', 'logos:tailwindcss-icon',
-    'logos:github-icon', 'logos:twitter', 'logos:google-icon', 'logos:apple',
-    'ph:star-fill', 'ph:heart-fill', 'ph:check-circle-fill', 'ph:warning-fill',
-    'mdi:home', 'mdi:account', 'mdi:cog', 'mdi:bell',
-    'fluent:emoji-smile-slight-24-filled', 'fluent:weather-sunny-24-filled',
-    'simple-icons:shadcnui', 'simple-icons:vercel'
-  ];
 
   const debouncedQuery = useDebounceValue(query, 500);
 
   useEffect(() => {
     if (!debouncedQuery) {
-        setIcons(featuredIcons);
-        return;
+      return;
     }
 
+    const controller = new AbortController();
     const searchIcons = async () => {
       setLoading(true);
       try {
-        const res = await fetch(`https://api.iconify.design/search?query=${encodeURIComponent(debouncedQuery)}&limit=50`);
-        const data = await res.json();
+        const res = await fetch(
+          `https://api.iconify.design/search?query=${encodeURIComponent(debouncedQuery)}&limit=50`,
+          { signal: controller.signal },
+        );
+        const data = await res.json() as IconSearchResponse;
         if (data.icons) {
           setIcons(data.icons);
         }
       } catch (error) {
-        console.error('Failed to fetch icons:', error);
+        if (!(error instanceof DOMException && error.name === 'AbortError')) {
+          console.error('Failed to fetch icons:', error);
+        }
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
       }
     };
 
-    searchIcons();
+    void searchIcons();
+    return () => controller.abort();
   }, [debouncedQuery]);
-
-  // Initial load
-  useEffect(() => {
-      if(!query) setIcons(featuredIcons);
-  }, []);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -95,7 +101,14 @@ export function IconPicker({ value, onChange }: IconPickerProps) {
                     placeholder="搜索图标 (如: react, home)..." 
                     className="pl-8"
                     value={query}
-                    onChange={(e) => setQuery(e.target.value)}
+                    onChange={(e) => {
+                      const nextQuery = e.target.value;
+                      setQuery(nextQuery);
+                      if (!nextQuery) {
+                        setIcons(FEATURED_ICONS);
+                        setLoading(false);
+                      }
+                    }}
                 />
             </div>
         </div>

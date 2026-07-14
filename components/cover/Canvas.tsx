@@ -220,6 +220,8 @@ export default function Canvas() {
           }}
       >
           {icon.customIconUrl ? (
+              // A native image node is intentional: html-to-image clones it for export.
+              // eslint-disable-next-line @next/next/no-img-element
               <img 
                   src={icon.customIconUrl} 
                   alt="Custom Icon" 
@@ -377,6 +379,8 @@ export default function Canvas() {
               }}
             >
                 {background.type === 'image' && background.imageUrl && (
+                    // A native image node is intentional: html-to-image clones it for export.
+                    // eslint-disable-next-line @next/next/no-img-element
                     <img 
                         src={background.imageUrl}
                         alt="Background"
