@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "EastCoverPlus",
+  title: "EasyCoverPlus",
   description: "Do U WANT",
   icons: {
     icon: "https://q2.qlogo.cn/headimg_dl?dst_uin=2726730791&spec=0",

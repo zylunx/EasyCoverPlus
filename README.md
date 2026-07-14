@@ -1,4 +1,4 @@
-# EastCoverPlus
+# EasyCoverPlus
 
 > DO U WANT
 
@@ -8,13 +8,13 @@
 
 ## 项目来源
 
-> **修改声明（GNU AGPLv3 第 5 条）**：EastCoverPlus 是基于 [EasyCover - AcoFork](https://github.com/afoim/easy_cover) 修改而来的版本。本项目已于 **2026-07-14** 对原项目进行修改，并继续扩展功能与使用体验。
+> **修改声明（GNU AGPLv3 第 5 条）**：EasyCoverPlus 是基于 [EasyCover - AcoFork](https://github.com/afoim/easy_cover) 修改而来的版本。本项目已于 **2026-07-14** 对原项目进行修改，并继续扩展功能与使用体验。
 
-原项目版权归 AcoFork 及原项目贡献者所有；EastCoverPlus 新增修改的版权归相应贡献者所有。感谢原项目作者及贡献者的工作。
+原项目版权归 AcoFork 及原项目贡献者所有；EasyCoverPlus 新增修改的版权归相应贡献者所有。感谢原项目作者及贡献者的工作。
 
 ## 与原项目的主要区别
 
-EastCoverPlus 保留了原项目的多比例画布、图标选择、文字编辑、背景图片和静态导出能力，并在此基础上增加或调整了以下功能：
+EasyCoverPlus 保留了原项目的多比例画布、图标选择、文字编辑、背景图片和静态导出能力，并在此基础上增加或调整了以下功能：
 
 * **自动取色渐变背景**：新增“自动取色”背景类型，可从 Iconify 图标或用户上传图标的最终渲染结果中提取主色，并生成带可读性保护的同色系柔和渐变。
 * **背景持续跟随图标**：启用自动取色后，更换图标或调整图标颜色会自动更新背景；切换回纯色或图片背景时仍保留原有设置。
@@ -100,4 +100,4 @@ pnpm dev
 
 ---
 
-Original project by AcoFork. EastCoverPlus modifications by project contributors.
+Original project by AcoFork. EasyCoverPlus modifications by project contributors.
