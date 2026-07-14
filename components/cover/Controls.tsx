@@ -39,7 +39,14 @@ const loadAvifEncoder = async () => {
     avifEncoderModulePromise = Promise.all([
       import('@jsquash/avif/codec/enc/avif_enc.js'),
       import('@jsquash/avif/utils.js'),
-    ]).then(([codec, utils]) => utils.initEmscriptenModule(codec.default));
+    ])
+      .then(([codec, utils]) => utils.initEmscriptenModule(codec.default))
+      .catch((error) => {
+        // A failed dynamic import (for example, a temporarily unavailable WASM
+        // asset) must not poison every later export attempt.
+        avifEncoderModulePromise = null;
+        throw error;
+      });
   }
   return avifEncoderModulePromise;
 };
@@ -133,8 +140,41 @@ const canvasToAvifBlob = async (canvas: HTMLCanvasElement): Promise<Blob> => {
   if (!encoded || encoded.byteLength === 0) {
     throw new Error('The AVIF WASM encoder returned no data');
   }
-  const encodedBuffer = new Uint8Array(encoded).buffer;
+
+  // Embind may return a view backed by WASM memory. Copy it before the next
+  // encoder call can grow or reuse that memory, then verify that the result is
+  // an ISO BMFF file containing an AVIF-compatible brand.
+  const encodedBytes = Uint8Array.from(encoded);
+  const header = new TextDecoder('ascii').decode(encodedBytes.subarray(4, 32));
+  if (encodedBytes.byteLength < 16 || !header.includes('ftyp') || !/avi[fs]/.test(header)) {
+    throw new Error('The AVIF WASM encoder returned an invalid file');
+  }
+  const encodedBuffer = encodedBytes.buffer;
   return new Blob([encodedBuffer], { type: EXPORT_MIME_TYPES.avif });
+};
+
+const detectExportSupport = async (format: ExportFormat): Promise<ExportSupport> => {
+  if (await detectCanvasEncoder(format)) return 'native';
+  if (format !== 'avif' || typeof WebAssembly === 'undefined') return 'unsupported';
+
+  // Do a real encode instead of treating the mere presence of WebAssembly as
+  // AVIF support. This catches missing/blocked codec chunks before the button
+  // is enabled and avoids an export that only fails after rendering the cover.
+  const canvas = document.createElement('canvas');
+  canvas.width = 2;
+  canvas.height = 2;
+  const context = canvas.getContext('2d');
+  if (!context) return 'unsupported';
+  context.fillStyle = '#ff00aa';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+
+  try {
+    await canvasToAvifBlob(canvas);
+    return 'wasm';
+  } catch (error) {
+    console.error('AVIF WASM encoder self-check failed', error);
+    return 'unsupported';
+  }
 };
 
 const canvasToExportBlob = async (
@@ -278,17 +318,10 @@ export default function Controls() {
   React.useEffect(() => {
     let cancelled = false;
     const detectFormats = async () => {
-      const results = await Promise.all(EXPORT_FORMATS.map(detectCanvasEncoder));
+      const results = await Promise.all(EXPORT_FORMATS.map(detectExportSupport));
       if (!cancelled) {
         setExportSupport(Object.fromEntries(
-          EXPORT_FORMATS.map((format, index) => [
-            format,
-            results[index]
-              ? 'native'
-              : format === 'avif' && typeof WebAssembly !== 'undefined'
-                ? 'wasm'
-                : 'unsupported',
-          ]),
+          EXPORT_FORMATS.map((format, index) => [format, results[index]]),
         ) as Record<ExportFormat, ExportSupport>);
       }
     };
