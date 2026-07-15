@@ -69,7 +69,7 @@ http://localhost:3000
 
 
 
-![EasyCoverPlus 界面预览](\docs\preview.png)
+![EasyCoverPlus 界面预览](docs/preview.png)
 
 ---
 
