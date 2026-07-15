@@ -20,10 +20,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   clearImgBedHistory,
   copyTextToClipboard,
   createProbePngBlob,
+  DEFAULT_IMGBED_CONFIG,
+  getUploadProviderMeta,
   isImgBedConfigReady,
   isImgBedUnlocked,
   loadImgBedConfig,
@@ -32,12 +35,15 @@ import {
   saveImgBedConfig,
   setImgBedUnlocked,
   uploadToImgBedWithRetry,
+  UPLOAD_PROVIDERS,
   verifyImgBedPassword,
   type ImgBedAuthMode,
   type ImgBedConfig,
   type ImgBedHistoryItem,
+  type UploadProvider,
 } from '@/lib/imgbed';
 import { Check, Copy, Link2, Loader2, Lock, Settings2, Trash2, Unlock } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 export interface ImgBedControlsHandle {
   maybeUpload: (blob: Blob, filename: string, format: string) => Promise<void>;
@@ -51,11 +57,7 @@ export const ImgBedControls = React.forwardRef<ImgBedControlsHandle, ImgBedContr
   function ImgBedControls({ disabled = false }, ref) {
     const [unlocked, setUnlocked] = React.useState(false);
     const [uploadEnabled, setUploadEnabled] = React.useState(false);
-    const [config, setConfig] = React.useState<ImgBedConfig>({
-      baseUrl: '',
-      authMode: 'token',
-      secret: '',
-    });
+    const [config, setConfig] = React.useState<ImgBedConfig>(DEFAULT_IMGBED_CONFIG);
     const [history, setHistory] = React.useState<ImgBedHistoryItem[]>([]);
     const [toast, setToast] = React.useState<string | null>(null);
 
@@ -65,7 +67,7 @@ export const ImgBedControls = React.forwardRef<ImgBedControlsHandle, ImgBedContr
     const [unlocking, setUnlocking] = React.useState(false);
 
     const [settingsOpen, setSettingsOpen] = React.useState(false);
-    const [draftConfig, setDraftConfig] = React.useState<ImgBedConfig>(config);
+    const [draftConfig, setDraftConfig] = React.useState<ImgBedConfig>(DEFAULT_IMGBED_CONFIG);
     const [testing, setTesting] = React.useState(false);
     const [testMessage, setTestMessage] = React.useState<string | null>(null);
 
@@ -128,12 +130,8 @@ export const ImgBedControls = React.forwardRef<ImgBedControlsHandle, ImgBedContr
     };
 
     const saveSettings = () => {
-      const next: ImgBedConfig = {
-        baseUrl: draftConfig.baseUrl.trim(),
-        authMode: draftConfig.authMode,
-        secret: draftConfig.secret,
-      };
-      saveImgBedConfig(next);
+      saveImgBedConfig(draftConfig);
+      const next = loadImgBedConfig();
       setConfig(next);
       setSettingsOpen(false);
       showToast('图床配置已保存');
@@ -159,7 +157,7 @@ export const ImgBedControls = React.forwardRef<ImgBedControlsHandle, ImgBedContr
         return;
       }
       if (checked && !isImgBedConfigReady(config)) {
-        showToast('请先配置图床');
+        showToast('请先配置当前渠道参数');
         openSettings();
         return;
       }
@@ -176,7 +174,7 @@ export const ImgBedControls = React.forwardRef<ImgBedControlsHandle, ImgBedContr
       const latestConfig = loadImgBedConfig();
       setConfig(latestConfig);
       if (!isImgBedConfigReady(latestConfig)) {
-        throw new Error('请先在图床设置中填写 baseUrl 与密钥');
+        throw new Error('请先完善当前渠道所需参数');
       }
       const url = await uploadToImgBedWithRetry(blob, filename, latestConfig);
       await recordSuccess(url, filename, format);
@@ -214,6 +212,13 @@ export const ImgBedControls = React.forwardRef<ImgBedControlsHandle, ImgBedContr
       }
     };
 
+    const selectedMeta = getUploadProviderMeta(draftConfig.provider);
+    const draftReady = isImgBedConfigReady(draftConfig);
+
+    const setProvider = (provider: UploadProvider) => {
+      setDraftConfig((prev) => ({ ...prev, provider }));
+    };
+
     return (
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-2">
@@ -233,7 +238,7 @@ export const ImgBedControls = React.forwardRef<ImgBedControlsHandle, ImgBedContr
               </Label>
             </div>
             <p className="mt-1 text-[11px] text-muted-foreground">
-              本地优先；开启后会将封面发送到你配置的图床。
+              本地优先；各渠道相互独立，参数各自配置。
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-1">
@@ -334,7 +339,7 @@ export const ImgBedControls = React.forwardRef<ImgBedControlsHandle, ImgBedContr
             <DialogHeader>
               <DialogTitle>验证图床权限</DialogTitle>
               <DialogDescription>
-                输入密码以解锁自定义图床配置与上传。哈希比对仅在本地完成。
+                输入密码以解锁图床配置与上传。哈希比对仅在本地完成。
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-2">
@@ -369,69 +374,330 @@ export const ImgBedControls = React.forwardRef<ImgBedControlsHandle, ImgBedContr
         </Dialog>
 
         <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-          <DialogContent>
+          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
             <DialogHeader>
               <DialogTitle>图床设置</DialogTitle>
               <DialogDescription>
-                适配 CloudFlare ImgBed：`POST /upload`，支持 API Token 或 authCode。
-                密钥仅保存在本机 localStorage。
+                渠道相互独立，互不隶属。切换渠道只使用该渠道自己的参数。
               </DialogDescription>
             </DialogHeader>
+
             <div className="space-y-3">
               <div className="space-y-1.5">
-                <Label htmlFor="imgbed-base-url">站点地址 baseUrl</Label>
-                <Input
-                  id="imgbed-base-url"
-                  placeholder="https://your-imgbed.example"
-                  value={draftConfig.baseUrl}
-                  onChange={(event) => setDraftConfig((prev) => ({
-                    ...prev,
-                    baseUrl: event.target.value,
-                  }))}
-                />
+                <Label>上传渠道</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {UPLOAD_PROVIDERS.map((provider) => {
+                    const selected = draftConfig.provider === provider.id;
+                    return (
+                      <Button
+                        key={provider.id}
+                        type="button"
+                        variant={selected ? 'default' : 'outline'}
+                        className={cn(
+                          'h-auto min-h-10 justify-start px-3 py-2 text-left text-xs',
+                          selected && 'shadow-sm',
+                        )}
+                        onClick={() => setProvider(provider.id)}
+                        aria-pressed={selected}
+                      >
+                        <span className="font-medium leading-snug">{provider.label}</span>
+                      </Button>
+                    );
+                  })}
+                </div>
+                <p className="text-[11px] text-muted-foreground">{selectedMeta.description}</p>
               </div>
-              <div className="space-y-1.5">
-                <Label>认证方式</Label>
-                <Select
-                  value={draftConfig.authMode}
-                  onValueChange={(value: ImgBedAuthMode) => setDraftConfig((prev) => ({
-                    ...prev,
-                    authMode: value,
-                  }))}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="token">API Token（Bearer）</SelectItem>
-                    <SelectItem value="authCode">上传认证码 authCode</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="imgbed-secret">
-                  {draftConfig.authMode === 'token' ? 'API Token' : 'authCode'}
-                </Label>
-                <Input
-                  id="imgbed-secret"
-                  type="password"
-                  autoComplete="off"
-                  value={draftConfig.secret}
-                  onChange={(event) => setDraftConfig((prev) => ({
-                    ...prev,
-                    secret: event.target.value,
-                  }))}
-                />
-              </div>
+
+              {draftConfig.provider === 'imgbed' && (
+                <div className="space-y-3 rounded-md border p-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="imgbed-base-url">ImgBed 站点地址</Label>
+                    <Input
+                      id="imgbed-base-url"
+                      placeholder="https://your-imgbed.example"
+                      value={draftConfig.imgbed.baseUrl}
+                      onChange={(event) => setDraftConfig((prev) => ({
+                        ...prev,
+                        imgbed: { ...prev.imgbed, baseUrl: event.target.value },
+                      }))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>认证方式</Label>
+                    <Select
+                      value={draftConfig.imgbed.authMode}
+                      onValueChange={(value: ImgBedAuthMode) => setDraftConfig((prev) => ({
+                        ...prev,
+                        imgbed: { ...prev.imgbed, authMode: value },
+                      }))}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="token">API Token（Bearer）</SelectItem>
+                        <SelectItem value="authCode">上传认证码 authCode</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="imgbed-secret">
+                      {draftConfig.imgbed.authMode === 'token' ? 'API Token' : 'authCode'}
+                    </Label>
+                    <Input
+                      id="imgbed-secret"
+                      type="password"
+                      autoComplete="off"
+                      value={draftConfig.imgbed.secret}
+                      onChange={(event) => setDraftConfig((prev) => ({
+                        ...prev,
+                        imgbed: { ...prev.imgbed, secret: event.target.value },
+                      }))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="imgbed-channel-name">子渠道名称（可选）</Label>
+                    <Input
+                      id="imgbed-channel-name"
+                      placeholder="多账号时填写，可留空"
+                      value={draftConfig.imgbed.channelName}
+                      onChange={(event) => setDraftConfig((prev) => ({
+                        ...prev,
+                        imgbed: { ...prev.imgbed, channelName: event.target.value },
+                      }))}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {draftConfig.provider === 'r2' && (
+                <div className="space-y-3 rounded-md border p-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="r2-account">Account ID</Label>
+                    <Input
+                      id="r2-account"
+                      placeholder="Cloudflare Account ID"
+                      value={draftConfig.r2.accountId}
+                      onChange={(event) => setDraftConfig((prev) => ({
+                        ...prev,
+                        r2: { ...prev.r2, accountId: event.target.value },
+                      }))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="r2-access-key">Access Key ID</Label>
+                    <Input
+                      id="r2-access-key"
+                      value={draftConfig.r2.accessKeyId}
+                      onChange={(event) => setDraftConfig((prev) => ({
+                        ...prev,
+                        r2: { ...prev.r2, accessKeyId: event.target.value },
+                      }))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="r2-secret-key">Secret Access Key</Label>
+                    <Input
+                      id="r2-secret-key"
+                      type="password"
+                      autoComplete="off"
+                      value={draftConfig.r2.secretAccessKey}
+                      onChange={(event) => setDraftConfig((prev) => ({
+                        ...prev,
+                        r2: { ...prev.r2, secretAccessKey: event.target.value },
+                      }))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="r2-bucket">Bucket</Label>
+                    <Input
+                      id="r2-bucket"
+                      value={draftConfig.r2.bucket}
+                      onChange={(event) => setDraftConfig((prev) => ({
+                        ...prev,
+                        r2: { ...prev.r2, bucket: event.target.value },
+                      }))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="r2-public">公开访问前缀</Label>
+                    <Input
+                      id="r2-public"
+                      placeholder="https://cdn.example.com 或 r2.dev 域名"
+                      value={draftConfig.r2.publicBaseUrl}
+                      onChange={(event) => setDraftConfig((prev) => ({
+                        ...prev,
+                        r2: { ...prev.r2, publicBaseUrl: event.target.value },
+                      }))}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {draftConfig.provider === 's3' && (
+                <div className="space-y-3 rounded-md border p-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="s3-endpoint">Endpoint（可选）</Label>
+                    <Input
+                      id="s3-endpoint"
+                      placeholder="留空=AWS；兼容存储填 https://s3.example.com"
+                      value={draftConfig.s3.endpoint}
+                      onChange={(event) => setDraftConfig((prev) => ({
+                        ...prev,
+                        s3: { ...prev.s3, endpoint: event.target.value },
+                      }))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="s3-region">Region</Label>
+                    <Input
+                      id="s3-region"
+                      placeholder="us-east-1"
+                      value={draftConfig.s3.region}
+                      onChange={(event) => setDraftConfig((prev) => ({
+                        ...prev,
+                        s3: { ...prev.s3, region: event.target.value },
+                      }))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="s3-bucket">Bucket</Label>
+                    <Input
+                      id="s3-bucket"
+                      value={draftConfig.s3.bucket}
+                      onChange={(event) => setDraftConfig((prev) => ({
+                        ...prev,
+                        s3: { ...prev.s3, bucket: event.target.value },
+                      }))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="s3-access-key">Access Key ID</Label>
+                    <Input
+                      id="s3-access-key"
+                      value={draftConfig.s3.accessKeyId}
+                      onChange={(event) => setDraftConfig((prev) => ({
+                        ...prev,
+                        s3: { ...prev.s3, accessKeyId: event.target.value },
+                      }))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="s3-secret-key">Secret Access Key</Label>
+                    <Input
+                      id="s3-secret-key"
+                      type="password"
+                      autoComplete="off"
+                      value={draftConfig.s3.secretAccessKey}
+                      onChange={(event) => setDraftConfig((prev) => ({
+                        ...prev,
+                        s3: { ...prev.s3, secretAccessKey: event.target.value },
+                      }))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="s3-public">公开访问前缀</Label>
+                    <Input
+                      id="s3-public"
+                      placeholder="https://cdn.example.com"
+                      value={draftConfig.s3.publicBaseUrl}
+                      onChange={(event) => setDraftConfig((prev) => ({
+                        ...prev,
+                        s3: { ...prev.s3, publicBaseUrl: event.target.value },
+                      }))}
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="s3-path-style"
+                      checked={draftConfig.s3.forcePathStyle}
+                      onCheckedChange={(checked) => setDraftConfig((prev) => ({
+                        ...prev,
+                        s3: { ...prev.s3, forcePathStyle: checked === true },
+                      }))}
+                    />
+                    <Label htmlFor="s3-path-style" className="text-xs font-normal">
+                      使用 Path-Style（多数兼容存储建议开启）
+                    </Label>
+                  </div>
+                </div>
+              )}
+
+              {draftConfig.provider === 'webdav' && (
+                <div className="space-y-3 rounded-md border p-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="webdav-url">WebDAV 地址</Label>
+                    <Input
+                      id="webdav-url"
+                      placeholder="https://dav.example.com/remote.php/dav/files/user/"
+                      value={draftConfig.webdav.serverUrl}
+                      onChange={(event) => setDraftConfig((prev) => ({
+                        ...prev,
+                        webdav: { ...prev.webdav, serverUrl: event.target.value },
+                      }))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="webdav-user">用户名</Label>
+                    <Input
+                      id="webdav-user"
+                      value={draftConfig.webdav.username}
+                      onChange={(event) => setDraftConfig((prev) => ({
+                        ...prev,
+                        webdav: { ...prev.webdav, username: event.target.value },
+                      }))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="webdav-pass">密码</Label>
+                    <Input
+                      id="webdav-pass"
+                      type="password"
+                      autoComplete="off"
+                      value={draftConfig.webdav.password}
+                      onChange={(event) => setDraftConfig((prev) => ({
+                        ...prev,
+                        webdav: { ...prev.webdav, password: event.target.value },
+                      }))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="webdav-path">上传目录</Label>
+                    <Input
+                      id="webdav-path"
+                      placeholder="EasyCoverPlus"
+                      value={draftConfig.webdav.basePath}
+                      onChange={(event) => setDraftConfig((prev) => ({
+                        ...prev,
+                        webdav: { ...prev.webdav, basePath: event.target.value },
+                      }))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="webdav-public">公开访问前缀（可选）</Label>
+                    <Input
+                      id="webdav-public"
+                      placeholder="不填则返回 WebDAV 路径本身"
+                      value={draftConfig.webdav.publicBaseUrl}
+                      onChange={(event) => setDraftConfig((prev) => ({
+                        ...prev,
+                        webdav: { ...prev.webdav, publicBaseUrl: event.target.value },
+                      }))}
+                    />
+                  </div>
+                </div>
+              )}
+
               {testMessage && (
                 <p className="break-all text-xs text-muted-foreground">{testMessage}</p>
               )}
             </div>
+
             <DialogFooter className="sm:justify-between">
               <Button
                 type="button"
                 variant="secondary"
-                disabled={testing || !draftConfig.baseUrl.trim() || !draftConfig.secret.trim()}
+                disabled={testing || !draftReady}
                 onClick={() => void handleTestConfig()}
               >
                 {testing ? <Loader2 className="size-4 animate-spin" /> : null}

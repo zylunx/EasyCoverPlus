@@ -1,105 +1,176 @@
 # EasyCoverPlus
 
-> DO U WANT
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](./LICENSE)
+[![Next.js](https://img.shields.io/badge/Next.js-16-black)](https://nextjs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6)](https://www.typescriptlang.org/)
+[![pnpm](https://img.shields.io/badge/pnpm-ready-F69220)](https://pnpm.io/)
+
+> **DO U WANT** — 简单、优雅的封面图生成工具。
+
+在浏览器里完成封面设计、渲染与导出。默认纯本地处理；需要时也可把结果上传到你自己配置的图床并拿到链接。
+
+**在线仓库：** [github.com/zylunx/EasyCoverPlus](https://github.com/zylunx/EasyCoverPlus)
+
+---
+
+## 目录
+
+- [特性](#特性)
+- [演示与预览](#演示与预览)
+- [技术栈](#技术栈)
+- [快速开始](#快速开始)
+- [使用说明](#使用说明)
+- [可选图床上传](#可选图床上传)
+- [部署](#部署)
+- [与原项目的主要区别](#与原项目的主要区别)
+- [项目结构](#项目结构)
+- [贡献](#贡献)
+- [致谢与许可](#致谢与许可)
+
+---
+
+## 特性
+
+- **纯客户端优先**  
+  封面编辑与导出在浏览器完成；默认不上传服务器。可选上传仅在你主动开启时发生。
+
+- **多比例画布**  
+  内置 `1200×630`（默认）、`1:1`、`16:9`、`21:9`、`4:3`、`2:1` 等常用封面尺寸。
+
+- **图标与文字**  
+  - Iconify 海量图标检索，支持自定义上传图标  
+  - 图标大小、旋转、颜色、阴影、容器形状与毛玻璃  
+  - 左右分栏文案，透明度、描边、字重、自动缩放
+
+- **背景**  
+  - 自动取色渐变（随图标主色更新）  
+  - 纯色 / 本地图片背景  
+  - 缩放、旋转、平移、模糊，以及「适应 / 铺满」
+
+- **多格式导出**  
+  PNG / WebP / AVIF；按浏览器能力显示可用按钮；AVIF 必要时走 WASM 编码。
+
+- **可选图床上传**  
+  相互独立的渠道：Cloudflare ImgBed、R2、S3、WebDAV。  
+  导出先本地下载，再按需上传并复制 URL。
+
+- **静态站点友好**  
+  `output: 'export'`，可部署到 Vercel、GitHub Pages 等任意静态托管。
+
+---
+
+## 演示与预览
+
+本地启动后访问：
+
+```text
+http://localhost:3000
+```
 
 
 
-简单、优雅的封面图生成工具。纯客户端运行，保护您的隐私。
+![EasyCoverPlus 界面预览](.\docs\preview.png)
 
-## 项目来源
+---
 
-> **修改声明（GNU AGPLv3 第 5 条）**：EasyCoverPlus 是基于 [EasyCover - AcoFork](https://github.com/afoim/easy_cover) 修改而来的版本。本项目已于 **2026-07-14** 对原项目进行修改，并继续扩展功能与使用体验。
+## 技术栈
 
-原项目版权归 AcoFork 及原项目贡献者所有；EasyCoverPlus 新增修改的版权归相应贡献者所有。感谢原项目作者及贡献者的工作。
+| 类别 | 技术 |
+|------|------|
+| 框架 | [Next.js](https://nextjs.org/) 16（App Router，静态导出） |
+| 语言 | TypeScript |
+| 样式 | Tailwind CSS 4 |
+| UI | shadcn/ui + Radix UI |
+| 状态 | Zustand |
+| 图标 | Iconify |
+| 导出 | html-to-image、@jsquash/avif |
 
-## 与原项目的主要区别
+---
 
-EasyCoverPlus 保留了原项目的多比例画布、图标选择、文字编辑、背景图片和静态导出能力，并在此基础上增加或调整了以下功能：
+## 快速开始
 
-* **自动取色渐变背景**：新增“自动取色”背景类型，可从 Iconify 图标或用户上传图标的最终渲染结果中提取主色，并生成带可读性保护的同色系柔和渐变。
-* **背景持续跟随图标**：启用自动取色后，更换图标或调整图标颜色会自动更新背景；切换回纯色或图片背景时仍保留原有设置。
-* **文字透明度**：新增 `0%` 至 `100%` 的文字透明度调整，默认透明度为 `50%`，同时作用于左右文字及其描边。
-* **文字自动适应**：新增文字自动缩放功能，长文字会在各自区域内自动缩小，减少溢出和重叠。
-* **博客封面比例**：新增 `1200×630` 画布预设并设为默认，同时保留原项目已有的其他比例。
-* **默认模板升级**：默认使用“B站 / 推荐”文字、Bilibili 图标、粉色自动渐变背景、中央玻璃容器、阴影与彩色光晕效果。
-* **多格式导出**：除 PNG 外，新增 WebP 和 AVIF 导出；浏览器不支持相应编码格式时不会显示对应按钮。
-* **可选图床上传**：支持 CloudFlare ImgBed（API Token / authCode），导出后可同时上传并返回链接；需密码解锁，配置仅存本机。
-* **智能导出文件名**：导出文件名由左右文字自动拼接生成，并自动清理文件名非法字符。
-* **导出兼容性处理**：规避跨域字体样式表导致的 `CSSStyleSheet.cssRules` 访问错误，提高浏览器端导出的稳定性。
+### 环境要求
 
-## ✨ 特性
+- Node.js 18+
+- [pnpm](https://pnpm.io/)（推荐）
 
-*   **纯客户端生成**：封面编辑与渲染均在浏览器完成；默认不上传服务器。可选图床上传会在你主动开启时将图片发送到你配置的图床。
-*   **多比例支持**：支持 1200×630、1:1、16:9、21:9、4:3、2:1 等多种主流封面比例。
-*   **丰富的图标库**：集成 Iconify，支持搜索和使用数万个图标。
-*   **高度自定义**：
-    *   **图标**：大小、旋转、颜色、阴影、容器形状（圆/方/圆角）、毛玻璃效果（高斯模糊 + 透明度）。
-    *   **文字**：自定义内容、大小、颜色、透明度、描边和自动适应。
-    *   **背景**：自动取色渐变、纯色背景、图片背景（支持缩放、旋转、平移、模糊）。
-*   **智能排版**：自动居中布局，支持“适应”和“铺满”两种图片填充模式。
-*   **纯净导出**：支持 PNG、WebP、AVIF，自动隐藏辅助线和标尺，并根据浏览器能力显示可用格式。
-*   **可选图床上传**：导出时默认仅本地下载；解锁并配置 CloudFlare ImgBed 后，可同时上传并复制图片 URL。
-
-## 🛠️ 技术栈
-
-*   [Next.js](https://nextjs.org/) - React 框架
-*   [Tailwind CSS](https://tailwindcss.com/) - 样式引擎
-*   [Shadcn/ui](https://ui.shadcn.com/) - UI 组件库
-*   [Zustand](https://github.com/pmndrs/zustand) - 状态管理
-*   [Iconify](https://iconify.design/) - 图标方案
-*   [html-to-image](https://github.com/bubkoo/html-to-image) - 图片生成
-
-## 🚀 快速开始
-
-1.  **克隆仓库**
+### 安装与运行
 
 ```bash
+# 克隆仓库
 git clone https://github.com/zylunx/EasyCoverPlus.git
 cd EasyCoverPlus
-```
 
-2.  **安装依赖**
-
-```bash
+# 安装依赖
 pnpm install
-```
 
-3.  **启动开发服务器**
-
-```bash
+# 开发模式
 pnpm dev
 ```
 
-打开浏览器访问 [http://localhost:3000](http://localhost:3000) 即可使用。
+浏览器打开 [http://localhost:3000](http://localhost:3000)。
 
-## 📖 使用指南
-
-1.  **选择布局**：在左侧面板选择所需的图片比例（如 16:9）。
-2.  **设置内容**：输入封面标题，调整文字大小和颜色。
-3.  **添加图标**：点击图标选择器搜索并选择合适的图标，调整其样式和容器背景（支持毛玻璃效果）。
-4.  **配置背景**：选择纯色背景或上传本地图片。使用“适应”或“铺满”按钮快速调整图片布局。
-5.  **导出**：点击底部格式按钮保存图片。可选开启「同时上传到图床」获取在线链接。
-
-## 🖼 可选图床上传（CloudFlare ImgBed）
-
-本地优先：导出始终先下载到本地。若需要在线 URL：
-
-1. 点击 **验证权限**，输入密码解锁（默认密码 `easycover-upload`，可用环境变量覆盖哈希）。
-2. 打开图床设置，填写：
-   - `baseUrl`：你的 ImgBed 站点地址
-   - 认证方式：`API Token` 或 `authCode`
-   - 对应密钥（仅保存在浏览器 `localStorage`）
-3. 可用 **测试上传配置** 验证连通性。
-4. 打开 **同时上传到图床**，再导出 PNG / WebP / AVIF。
-
-成功后会自动复制链接，并保留最近 20 条历史上传记录。
-
-### 部署密码哈希
-
-前端使用 SHA-256 十六进制哈希做门禁（防君子不防小人）。覆盖默认密码：
+### 常用脚本
 
 ```bash
-# 计算哈希（Node 18+）
+pnpm dev      # 开发服务器
+pnpm build    # 生产构建（输出到 out/）
+pnpm start    # 预览生产构建（若使用 next start）
+pnpm lint     # ESLint
+```
+
+---
+
+## 使用说明
+
+1. **选择比例** — 在左侧勾选需要的画布尺寸。  
+2. **编辑文字** — 填写左右标题，调整字号、颜色、透明度、描边与对齐。  
+3. **配置图标** — 搜索 Iconify 或上传本地图标，设置容器、阴影与毛玻璃。  
+4. **设置背景** — 自动取色 / 纯色 / 图片；图片可用「适应」「铺满」快速布局。  
+5. **导出** — 点击 PNG / WebP / AVIF。可选开启「同时上传到图床」获取在线链接。
+
+导出文件名由左右文字自动拼接，并清理非法字符。
+
+---
+
+## 可选图床上传
+
+设计原则：**本地优先，渠道相互独立**。
+
+导出时始终先下载到本地；若开启「同时上传到图床」，再将结果发往你选中的渠道。
+
+### 支持的渠道
+
+| 渠道 | 类型 | 主要配置项 |
+|------|------|------------|
+| **Cloudflare ImgBed**（默认） | ImgBed `POST /upload` | 站点地址、API Token 或 authCode |
+| **R2** | Cloudflare R2 直传（S3 签名） | Account ID、Access Key、Secret、Bucket、公开访问前缀 |
+| **S3** | S3 / 兼容存储直传 | Endpoint（可选）、Region、Bucket、密钥、公开访问前缀 |
+| **WebDAV** | WebDAV `PUT` | 服务地址、用户名、密码、目录、可选公开前缀 |
+
+各渠道参数互不影响；切换渠道只会使用该渠道自己的配置。对象路径默认包含 `EasyCoverPlus/` 前缀。
+
+### 使用步骤
+
+1. 点击 **验证权限**，输入密码解锁。  
+2. 打开图床设置，选择渠道并填写参数（保存在浏览器 `localStorage`）。  
+3. （可选）点击 **测试上传配置**。  
+4. 打开 **同时上传到图床**，再导出图片。  
+
+上传成功会自动复制链接，并保留最近 20 条历史记录。失败时自动重试，仍失败可选择重试 / 仅保留本地 / 复制错误详情。
+
+### 权限密码
+
+默认密码：
+
+```text
+easycover-upload
+```
+
+前端使用 SHA-256 哈希比对（防君子不防小人）。部署时建议用环境变量覆盖：
+
+```bash
+# 生成哈希（Node 18+）
 node -e "crypto.subtle.digest('SHA-256', new TextEncoder().encode('你的密码')).then(b=>console.log(Buffer.from(b).toString('hex')))"
 ```
 
@@ -107,36 +178,120 @@ node -e "crypto.subtle.digest('SHA-256', new TextEncoder().encode('你的密码'
 NEXT_PUBLIC_UPLOAD_PASSWORD_HASH=你的sha256十六进制
 ```
 
-### 上传协议摘要
+### 安全与 CORS 说明
 
-- `POST {baseUrl}/upload?returnFormat=full&uploadChannel=telegram&uploadFolder=EasyCoverPlus`
-- `multipart/form-data` 字段名：`file`
-- Token 模式：`Authorization: Bearer <token>`
-- authCode 模式：query `authCode=<code>`
-- 响应数组优先读取 `publicUrl` → `url` → `src`
-
-> 注意：浏览器直传依赖图床实例的 CORS 配置；失败时可重试或仅保留本地文件。
-
-## 📦 部署
-
-本项目已配置为静态导出 (`output: 'export'`)，可轻松部署到任何静态托管服务。
-
-### Vercel 部署
-
-1.  Fork 本仓库。
-2.  在 Vercel 中导入项目。
-3.  Vercel 会自动识别 Next.js 项目。
-4.  **重要**：确保构建命令为 `pnpm build` (默认)，输出目录默认为 `out` (Next.js 静态导出默认目录)。
-    *   注：本项目已在 `next.config.ts` 中启用了 `output: 'export'`，Vercel 会自动处理，无需额外配置。
-
-### GitHub Pages 部署
-
-1.  构建项目：
-    ```bash
-    pnpm build
-    ```
-2.  将生成的 `out` 目录内容推送到 `gh-pages` 分支。
+- 密钥与图床配置仅存在本机浏览器，**不会写入构建产物**（除密码哈希外）。  
+- R2 / S3 / WebDAV / ImgBed 需在服务端正确配置 **CORS**，允许你的站点来源。  
+- 请勿在不信任的设备或公共电脑上填写长期有效的 Access Key。
 
 ---
 
-Original project by AcoFork. EasyCoverPlus modifications by project contributors.
+## 部署
+
+项目已启用静态导出：
+
+```ts
+// next.config.ts
+output: 'export'
+```
+
+构建产物在 `out/` 目录。
+
+### Vercel
+
+1. Fork 本仓库并在 Vercel 中导入。  
+2. 使用默认构建命令 `pnpm build`。  
+3. 输出目录为 `out`（静态导出）。  
+4. 如需自定义解锁密码，在项目环境变量中设置 `NEXT_PUBLIC_UPLOAD_PASSWORD_HASH`。
+
+### GitHub Pages / 其他静态托管
+
+```bash
+pnpm build
+# 将 out/ 目录内容发布到 gh-pages、Cloudflare Pages、OSS 等
+```
+
+### Cloudflare Pages（可选）
+
+仓库若包含 `wrangler.jsonc`，也可按 Cloudflare Pages 的静态资源方式部署 `out/`。
+
+---
+
+## 与原项目的主要区别
+
+> **修改声明（GNU AGPLv3 第 5 条）**  
+> EasyCoverPlus 基于 [EasyCover - AcoFork](https://github.com/afoim/easy_cover) 修改。  
+> 本项目于 **2026-07** 起对原项目进行修改并持续扩展。
+
+相对原项目，主要增强包括：
+
+| 能力 | 说明 |
+|------|------|
+| 自动取色渐变 | 从图标渲染结果提取主色，生成可读性保护的柔和渐变 |
+| 背景跟随图标 | 自动取色模式下，换图标/改色时同步更新背景 |
+| 文字透明度 / 自动适应 | 0%–100% 透明度；长文本自动缩小 |
+| 博客封面预设 | 默认 `1200×630`，并保留多种比例 |
+| 默认模板 | B 站风格默认文案、图标与玻璃容器 |
+| 多格式导出 | PNG / WebP / AVIF（含 WASM 回退） |
+| 图床上传 | ImgBed / R2 / S3 / WebDAV 独立适配 |
+| 智能文件名 | 由标题生成，清理非法字符 |
+| 导出稳定性 | 规避跨域字体样式表等导出异常 |
+
+原项目版权归 AcoFork 及贡献者所有；EasyCoverPlus 新增修改归相应贡献者所有。
+
+---
+
+## 项目结构
+
+```text
+EasyCoverPlus/
+├── app/                    # Next.js App Router 页面
+├── components/
+│   ├── cover/              # 画布、控制面板、图床上传 UI
+│   └── ui/                 # shadcn/ui 基础组件
+├── lib/                    # 导出、取色、图床上传等工具
+├── store/                  # Zustand 状态
+├── public/                 # 静态资源
+├── docs/                   # 文档与截图（可选）
+├── next.config.ts          # 静态导出配置
+└── package.json
+```
+
+---
+
+## 贡献
+
+欢迎 Issue 与 Pull Request。
+
+1. Fork 本仓库  
+2. 创建特性分支：`git checkout -b feature/your-feature`  
+3. 提交更改：`git commit -m "feat: ..."`  
+4. 推送分支并开启 PR  
+
+请尽量保持代码风格与现有项目一致，并说明改动动机与验证方式。
+
+---
+
+## 致谢与许可
+
+### 致谢
+
+- [EasyCover](https://github.com/afoim/easy_cover) — 原项目作者 AcoFork 与贡献者  
+- [Iconify](https://iconify.design/)、[shadcn/ui](https://ui.shadcn.com/)、[html-to-image](https://github.com/bubkoo/html-to-image) 等开源项目
+
+### 许可
+
+本项目基于 **GNU Affero General Public License v3.0（AGPL-3.0）** 开源。  
+完整文本见 [LICENSE](./LICENSE)。
+
+网络部署本软件时，需遵守 AGPL 对源码提供的相关义务。
+
+---
+
+<p align="center">
+  Made with ❤️ for cover creators
+  <br />
+  <a href="https://github.com/zylunx/EasyCoverPlus">GitHub</a>
+  ·
+  <a href="./LICENSE">License</a>
+</p>
