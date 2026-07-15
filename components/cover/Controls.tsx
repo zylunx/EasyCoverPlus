@@ -13,6 +13,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { IconPicker } from '@/components/cover/IconPicker';
+import { ImgBedControls, type ImgBedControlsHandle } from '@/components/cover/ImgBedControls';
 import { Separator } from '@/components/ui/separator';
 import { Download, RotateCcw, Maximize, Github, ExternalLink, Upload, HardDrive, Search, AlignLeft, AlignCenter, AlignRight, Lock, Unlock, ArrowLeftRight, MoveRight, Loader2 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -31,6 +32,8 @@ const EXPORT_MIME_TYPES: Record<ExportFormat, string> = {
 };
 
 const EXPORT_QUALITY = 0.95;
+// AVIF 压缩效率高，略降质量可明显减小体积，对封面文字边缘影响有限。
+const AVIF_EXPORT_QUALITY = 0.8;
 
 let avifEncoderModulePromise: Promise<import('@jsquash/avif/codec/enc/avif_enc.js').AVIFModule> | null = null;
 
@@ -70,6 +73,7 @@ const canvasToBlob = (
   format: ExportFormat,
 ): Promise<Blob> => new Promise((resolve, reject) => {
   const mimeType = EXPORT_MIME_TYPES[format];
+  const quality = format === 'avif' ? AVIF_EXPORT_QUALITY : EXPORT_QUALITY;
   canvas.toBlob((blob) => {
     if (!blob) {
       reject(new Error(`${format.toUpperCase()} encoder returned no data`));
@@ -86,7 +90,7 @@ const canvasToBlob = (
       return;
     }
     resolve(blob);
-  }, mimeType, EXPORT_QUALITY);
+  }, mimeType, quality);
 });
 
 const detectCanvasEncoder = async (format: ExportFormat): Promise<boolean> => {
@@ -123,8 +127,8 @@ const canvasToAvifBlob = async (canvas: HTMLCanvasElement): Promise<Blob> => {
     imageData.data.byteLength,
   );
   const encoded = encoder.encode(pixels, imageData.width, imageData.height, {
-    quality: Math.round(EXPORT_QUALITY * 100),
-    qualityAlpha: 100,
+    quality: Math.round(AVIF_EXPORT_QUALITY * 100),
+    qualityAlpha: 90,
     denoiseLevel: 0,
     tileColsLog2: 0,
     tileRowsLog2: 0,
@@ -314,6 +318,7 @@ export default function Controls() {
     avif: 'checking',
   });
   const [exportingFormat, setExportingFormat] = React.useState<ExportFormat | null>(null);
+  const imgBedRef = React.useRef<ImgBedControlsHandle>(null);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -599,9 +604,10 @@ export default function Controls() {
         store.text.leftContent,
         store.text.rightContent,
       );
+      const downloadName = `${filename}.${format}`;
 
       const link = document.createElement('a');
-      link.download = `${filename}.${format}`;
+      link.download = downloadName;
       link.href = objectUrl;
       document.body.appendChild(link);
       try {
@@ -612,6 +618,9 @@ export default function Controls() {
         // it in the same task can intermittently produce an empty download.
         window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
       }
+
+      // Local download always happens first; optional ImgBed upload is best-effort.
+      await imgBedRef.current?.maybeUpload(blob, downloadName, format);
     } catch (err) {
       console.error('Export failed', err);
       alert(`导出 ${format.toUpperCase()} 失败，请重试`);
@@ -1727,7 +1736,9 @@ export default function Controls() {
              AVIF 将使用 WASM 编码，首次导出需要加载编码器，耗时可能稍长。
            </p>
          )}
-         
+
+         <ImgBedControls ref={imgBedRef} disabled={exportingFormat !== null} />
+
          <div className="text-center text-xs text-muted-foreground">
             <a href="https://github.com/zylunx/EasyCoverPlus" target="_blank" rel="noopener noreferrer" className="hover:underline flex items-center justify-center gap-1">
                 <Github className="w-4 h-4" />
