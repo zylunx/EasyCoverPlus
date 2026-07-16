@@ -348,6 +348,14 @@ export default function Canvas() {
       </div>
   );
 
+  const autoGradientImage = (() => {
+    if (background.type !== 'auto') return undefined;
+    const [from, to] = background.autoLightSide === 'left'
+      ? [background.autoSecondary, background.autoPrimary]
+      : [background.autoPrimary, background.autoSecondary];
+    return `linear-gradient(135deg, ${from} 0%, ${to} 100%)`;
+  })();
+
   return (
     <div className="bg-gray-100 dark:bg-gray-900 overflow-hidden relative w-full h-[25vh] md:h-full md:flex-1 min-w-0 shrink-0 md:shrink">
       {/* Container for scaling */}
@@ -364,8 +372,8 @@ export default function Canvas() {
         }}
         className="transition-[width,height] duration-300"
       >
-        <div 
-            id="canvas-export-target" 
+        <div
+            id="canvas-export-target"
             className="w-full h-full relative overflow-hidden flex flex-col items-center justify-center"
         >
             {/* Background Layer */}
@@ -374,9 +382,7 @@ export default function Canvas() {
               className="absolute inset-0"
               style={{
                 backgroundColor: background.type === 'solid' ? background.color : '#ffffff',
-                backgroundImage: background.type === 'auto'
-                  ? `linear-gradient(135deg, ${background.autoPrimary} 0%, ${background.autoSecondary} 100%)`
-                  : undefined,
+                backgroundImage: autoGradientImage,
                 borderRadius: `${background.radius}px`,
               }}
             >

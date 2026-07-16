@@ -1,9 +1,9 @@
 import { create } from 'zustand';
 
-export type AspectRatio = '1200×630' | '1:1' | '16:9' | '21:9' | '4:3' | '2:1';
+export type AspectRatio = '40×21' | '1:1' | '16:9' | '21:9' | '4:3' | '2:1';
 
 export const RATIOS: { label: AspectRatio; width: number; height: number }[] = [
-  { label: '1200×630', width: 1200, height: 630 },
+  { label: '40×21', width: 1200, height: 630 },
   { label: '1:1', width: 900, height: 900 },
   { label: '16:9', width: 1600, height: 900 },
   { label: '21:9', width: 2100, height: 900 },
@@ -64,6 +64,8 @@ interface BackgroundSettings {
   color: string;
   autoPrimary: string;
   autoSecondary: string;
+  /** Which side the lighter auto-gradient color starts on (color order only; angle stays 135deg). */
+  autoLightSide: 'left' | 'right';
   imageUrl: string;
   blur: number; // 0-100
   radius: number; // 0-100
@@ -95,7 +97,7 @@ interface CoverState {
 }
 
 export const useCoverStore = create<CoverState>((set) => ({
-  selectedRatios: ['1200×630'],
+  selectedRatios: ['40×21'],
   showRuler: false,
   text: {
     fontSize: 250,
@@ -142,6 +144,7 @@ export const useCoverStore = create<CoverState>((set) => ({
     color: '#f3f4f6',
     autoPrimary: '#d94a72',
     autoSecondary: '#e59aae',
+    autoLightSide: 'left',
     imageUrl: '',
     blur: 0,
     radius: 0,

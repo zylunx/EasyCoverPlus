@@ -1625,7 +1625,18 @@ export default function Controls() {
                     </div>
                 </TabsContent>
 
-                <TabsContent value="auto" className="mt-2">
+                <TabsContent value="auto" className="space-y-2 mt-2">
+                    <Tabs
+                        value={store.background.autoLightSide}
+                        onValueChange={(v) =>
+                          store.updateBackground({ autoLightSide: v as 'left' | 'right' })
+                        }
+                    >
+                        <TabsList className="grid w-full grid-cols-2">
+                            <TabsTrigger value="left">浅色在左</TabsTrigger>
+                            <TabsTrigger value="right">浅色在右</TabsTrigger>
+                        </TabsList>
+                    </Tabs>
                     <div className="grid grid-cols-2 gap-2">
                         <div className="flex items-center justify-between gap-2 rounded-md border p-2">
                             <Label className="text-xs">主色</Label>
