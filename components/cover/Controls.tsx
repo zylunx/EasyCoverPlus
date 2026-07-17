@@ -14,6 +14,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { IconPicker } from '@/components/cover/IconPicker';
 import { ImgBedControls, type ImgBedControlsHandle } from '@/components/cover/ImgBedControls';
+import { ImageSourceZone } from '@/components/cover/ImageSourceZone';
 import { Separator } from '@/components/ui/separator';
 import { Download, RotateCcw, Maximize, Github, ExternalLink, Upload, HardDrive, Search, AlignLeft, AlignCenter, AlignRight, Lock, Unlock, ArrowLeftRight, MoveRight, Loader2 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -59,13 +60,6 @@ const readFileAsDataUrl = (file: File): Promise<string> => new Promise((resolve,
   reader.onerror = () => reject(reader.error ?? new Error(`Failed to read ${file.name}`));
   reader.onload = () => resolve(reader.result as string);
   reader.readAsDataURL(file);
-});
-
-const preloadImage = (src: string): Promise<void> => new Promise((resolve, reject) => {
-  const image = new Image();
-  image.onload = () => resolve();
-  image.onerror = () => reject(new Error('The selected image could not be decoded'));
-  image.src = src;
 });
 
 const canvasToBlob = (
@@ -346,41 +340,6 @@ export default function Controls() {
   }, [store.selectedRatios]);
   const pct = (p: number) => Math.max(1, Math.round(canvasMax * p));
 
-
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      try {
-        // html-to-image fetches every image while cloning the canvas. A blob URL
-        // becomes invalid when its cache-busting query string is added, whereas
-        // a data URL is self-contained and remains available during export.
-        const url = await readFileAsDataUrl(file);
-        await preloadImage(url);
-        store.updateBackground({ type: 'image', imageUrl: url });
-      } catch (err) {
-        console.error('Failed to load background image', err);
-        alert('图片读取失败，请尝试其他图片文件');
-      } finally {
-        e.target.value = '';
-      }
-    }
-  };
-
-  const handleIconUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      try {
-        const url = await readFileAsDataUrl(file);
-        await preloadImage(url);
-        store.updateIcon({ customIconUrl: url });
-      } catch (err) {
-        console.error('Failed to load custom icon', err);
-        alert('图标读取失败，请尝试其他图片文件');
-      } finally {
-        e.target.value = '';
-      }
-    }
-  };
 
   const handleFontUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1298,7 +1257,13 @@ export default function Controls() {
                 <TabsContent value="upload" className="space-y-2 mt-2">
                     <div className="space-y-2">
                         <Label>上传图片</Label>
-                        <Input type="file" accept="image/*" onChange={handleIconUpload} />
+                        <ImageSourceZone
+                          hasImage={Boolean(store.icon.customIconUrl)}
+                          onImage={(url) => {
+                            store.updateIcon({ customIconUrl: url, visible: true });
+                            setActiveTab('upload');
+                          }}
+                        />
                         {store.icon.customIconUrl && (
                             <>
                                 <div className="space-y-2">
@@ -1528,8 +1493,13 @@ export default function Controls() {
                 </TabsContent>
                 
                 <TabsContent value="image" className="space-y-2 mt-2">
-                     <Input type="file" accept="image/*" onChange={handleImageUpload} />
-                     
+                     <ImageSourceZone
+                       hasImage={Boolean(store.background.imageUrl)}
+                       onImage={(url) => {
+                         store.updateBackground({ type: 'image', imageUrl: url });
+                       }}
+                     />
+
                      <div className="space-y-2">
                         <div className="flex justify-between items-center">
                             <Label>高斯模糊 ({store.background.blur}px)</Label>
