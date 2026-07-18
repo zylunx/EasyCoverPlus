@@ -5,6 +5,8 @@ export interface ImgBedProviderConfig {
   baseUrl: string;
   authMode: ImgBedAuthMode;
   secret: string;
+  /** ImgBed uploadFolder query param. Empty = omit (server default / root). */
+  uploadFolder: string;
   channelName: string;
 }
 
@@ -35,8 +37,6 @@ export interface WebDavProviderConfig {
   password: string;
   /** Relative folder under serverUrl. Fixed default EasyCoverPlus. */
   basePath: string;
-  /** Optional public URL prefix if WebDAV path is not publicly readable. */
-  publicBaseUrl: string;
 }
 
 export interface UploadHostConfig {
@@ -97,6 +97,7 @@ export const DEFAULT_UPLOAD_HOST_CONFIG: UploadHostConfig = {
     baseUrl: '',
     authMode: 'token',
     secret: '',
+    uploadFolder: 'EasyCoverPlus',
     channelName: '',
   },
   r2: {
@@ -120,7 +121,6 @@ export const DEFAULT_UPLOAD_HOST_CONFIG: UploadHostConfig = {
     username: '',
     password: '',
     basePath: 'EasyCoverPlus',
-    publicBaseUrl: '',
   },
 };
 
@@ -224,12 +224,18 @@ function normalizeConfig(raw: Record<string, unknown>): UploadHostConfig {
   const s3Raw = nested('s3');
   const webdavRaw = nested('webdav');
 
+  const rawUploadFolder = asString(
+    imgbedRaw.uploadFolder,
+    looksLegacyFlat ? asString(raw.uploadFolder, defaults.imgbed.uploadFolder) : defaults.imgbed.uploadFolder,
+  );
+
   const imgbed: ImgBedProviderConfig = {
     baseUrl: asString(imgbedRaw.baseUrl, looksLegacyFlat ? asString(raw.baseUrl) : ''),
     authMode: (asString(imgbedRaw.authMode, looksLegacyFlat ? asString(raw.authMode, 'token') : 'token') === 'authCode')
       ? 'authCode'
       : 'token',
     secret: asString(imgbedRaw.secret, looksLegacyFlat ? asString(raw.secret) : ''),
+    uploadFolder: normalizeUploadFolder(rawUploadFolder),
     channelName: asString(imgbedRaw.channelName, looksLegacyFlat ? asString(raw.channelName) : ''),
   };
 
@@ -257,7 +263,6 @@ function normalizeConfig(raw: Record<string, unknown>): UploadHostConfig {
       username: asString(webdavRaw.username),
       password: asString(webdavRaw.password),
       basePath: asString(webdavRaw.basePath, defaults.webdav.basePath) || defaults.webdav.basePath,
-      publicBaseUrl: asString(webdavRaw.publicBaseUrl),
     },
   };
 }
@@ -368,6 +373,11 @@ const joinUrl = (base: string, path: string): string => {
   const normalizedPath = path.replace(/^\/+/, '');
   return `${normalizedBase}/${normalizedPath}`;
 };
+
+/** Trim whitespace and strip leading/trailing slashes for ImgBed uploadFolder. */
+export function normalizeUploadFolder(value: string): string {
+  return value.trim().replace(/^\/+|\/+$/g, '');
+}
 
 const sanitizeObjectKey = (filename: string): string => {
   const cleaned = filename
@@ -556,7 +566,10 @@ async function uploadViaImgBed(blob: Blob, filename: string, config: ImgBedProvi
   const uploadUrl = new URL('/upload', `${baseUrl}/`);
   uploadUrl.searchParams.set('returnFormat', 'full');
   uploadUrl.searchParams.set('uploadChannel', 'telegram');
-  uploadUrl.searchParams.set('uploadFolder', 'EasyCoverPlus');
+  const uploadFolder = normalizeUploadFolder(config.uploadFolder);
+  if (uploadFolder) {
+    uploadUrl.searchParams.set('uploadFolder', uploadFolder);
+  }
   if (config.channelName.trim()) {
     uploadUrl.searchParams.set('channelName', config.channelName.trim());
   }
@@ -726,9 +739,6 @@ async function uploadViaWebDav(blob: Blob, filename: string, config: WebDavProvi
     throw new Error(`上传失败 HTTP ${response.status}${text ? `：${text.slice(0, 300)}` : ''}`);
   }
 
-  if (config.publicBaseUrl.trim()) {
-    return joinUrl(config.publicBaseUrl.trim(), objectPath);
-  }
   return targetUrl;
 }
 

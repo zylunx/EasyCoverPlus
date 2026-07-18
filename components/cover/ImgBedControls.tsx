@@ -456,6 +456,21 @@ export const ImgBedControls = React.forwardRef<ImgBedControlsHandle, ImgBedContr
                     />
                   </div>
                   <div className="space-y-1.5">
+                    <Label htmlFor="imgbed-upload-folder">上传文件夹</Label>
+                    <Input
+                      id="imgbed-upload-folder"
+                      placeholder="EasyCoverPlus"
+                      value={draftConfig.imgbed.uploadFolder}
+                      onChange={(event) => setDraftConfig((prev) => ({
+                        ...prev,
+                        imgbed: { ...prev.imgbed, uploadFolder: event.target.value },
+                      }))}
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      可留空；留空则不指定文件夹
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
                     <Label htmlFor="imgbed-channel-name">子渠道名称（可选）</Label>
                     <Input
                       id="imgbed-channel-name"
@@ -670,18 +685,6 @@ export const ImgBedControls = React.forwardRef<ImgBedControlsHandle, ImgBedContr
                       onChange={(event) => setDraftConfig((prev) => ({
                         ...prev,
                         webdav: { ...prev.webdav, basePath: event.target.value },
-                      }))}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="webdav-public">公开访问前缀（可选）</Label>
-                    <Input
-                      id="webdav-public"
-                      placeholder="不填则返回 WebDAV 路径本身"
-                      value={draftConfig.webdav.publicBaseUrl}
-                      onChange={(event) => setDraftConfig((prev) => ({
-                        ...prev,
-                        webdav: { ...prev.webdav, publicBaseUrl: event.target.value },
                       }))}
                     />
                   </div>
