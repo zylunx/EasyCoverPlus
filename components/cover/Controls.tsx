@@ -249,8 +249,8 @@ const ResetButton = ({ onClick, tooltip = "重置" }: { onClick: () => void, too
 );
 
 const FONTS = [
-    { name: 'Inter (默认)', value: 'Inter, sans-serif', weights: [100, 200, 300, 400, 500, 600, 700, 800, 900] },
-    { name: 'MiSans', value: 'MiSans, sans-serif', weights: [100, 200, 300, 400, 500, 600, 700, 800, 900] },
+    { name: 'MiSans (默认)', value: 'MiSans, sans-serif', weights: [100, 200, 300, 400, 500, 600, 700, 800, 900] },
+    { name: 'Inter', value: 'Inter, sans-serif', weights: [100, 200, 300, 400, 500, 600, 700, 800, 900] },
     { name: 'HarmonyOS Sans', value: '"HarmonyOS Sans", sans-serif', weights: [100, 400, 700] },
     { name: '得意黑 (Smiley Sans)', value: 'SmileySans, sans-serif', weights: [400] },
     { name: 'OPPO Sans', value: 'OPPOSans, sans-serif', weights: [400] },

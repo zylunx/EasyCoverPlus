@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="EasyCoverPlus">
+  <title>EasyCoverPlus</title>
+  <defs>
+    <mask id="gap" maskUnits="userSpaceOnUse" x="0" y="0" width="512" height="512">
+      <rect x="0" y="0" width="512" height="512" fill="#fff"/>
+      <path fill="#000" fill-rule="evenodd" d="M208 96H384A64 64 0 0 1 448 160V336A64 64 0 0 1 384 400H208A64 64 0 0 1 144 336V160A64 64 0 0 1 208 96ZM208 104H384A56 56 0 0 1 440 160V336A56 56 0 0 1 384 392H208A56 56 0 0 1 152 336V160A56 56 0 0 1 208 104Z"/>
+    </mask>
+  </defs>
+  <!-- back card + front card, separated by a transparent seam -->
+  <g mask="url(#gap)">
+    <rect x="128" y="128" width="288" height="288" rx="56" fill="#000"/>
+    <rect x="152" y="104" width="288" height="288" rx="56" fill="#000"/>
+  </g>
+  <!-- plus -->
+  <path fill="#fff" d="M302 173h108v30H302z"/>
+  <path fill="#fff" d="M341 134h30v108h-30z"/>
+</svg>

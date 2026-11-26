@@ -108,7 +108,7 @@ export const useCoverStore = create<CoverState>((set) => ({
     strokeWidth: 0,
     fontWeight: 800,
     rotation: 0,
-    font: 'Inter, sans-serif',
+    font: 'MiSans, sans-serif',
     leftContent: 'B站',
     rightContent: '推荐',
     leftAlign: 'center',
